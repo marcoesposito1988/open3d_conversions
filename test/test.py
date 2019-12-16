@@ -55,7 +55,7 @@ class TestOpen3dToRos(PointCloudTestCase):
     def dotest(self, filename):
         open3d_cloud = open3d.read_point_cloud(filename)
 
-        ros_cloud = open3d_conversions.toMsg(open3d_cloud)
+        ros_cloud = open3d_conversions.to_msg(open3d_cloud)
 
         self.are_clouds_equal(ros_cloud, open3d_cloud)
 
@@ -70,7 +70,7 @@ class TestRosToOpen3d(PointCloudTestCase):
     def dotest(self, filename):
         ros_cloud = pypcd.PointCloud.from_path(filename).to_msg()
 
-        open3d_cloud = open3d_conversions.fromMsg(ros_cloud)
+        open3d_cloud = open3d_conversions.from_msg(ros_cloud)
 
         self.are_clouds_equal(ros_cloud, open3d_cloud)
 
