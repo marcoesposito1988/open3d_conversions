@@ -8,14 +8,8 @@ import unittest
 import numpy as np
 import open3d
 import open3d_conversions
+from sensor_msgs.msg import PointCloud2, PointField
 from ros_numpy.point_cloud2 import pointcloud2_to_array, pointcloud2_to_xyz_array, get_xyz_points, split_rgb_field
-
-try:
-    # https://github.com/dimatura/pypcd (must follow README to install it with ROS support)
-    import pypcd
-except ImportError:
-    print('pypcd is required to run the tests; follow the README of https://github.com/dimatura/pypcd')
-
 
 rospack = rospkg.RosPack()
 our_module_path = rospack.get_path('open3d_conversions')
@@ -79,3 +73,80 @@ class TestRosToOpen3d(PointCloudTestCase):
 
     def test_xyzrgb(self):
         self.dotest(pcd_path_xyzrgb)
+
+
+# extracted from pypcd and brought to ROS2/python3
+
+def array_to_pointcloud2(cloud_arr, stamp=None, frame_id=None, merge_rgb=False):
+    '''Converts a numpy record array to a sensor_msgs.msg.PointCloud2.
+    '''
+    if merge_rgb:
+        cloud_arr = merge_rgb_fields(cloud_arr)
+
+    # make it 2d (even if height will be 1)
+    cloud_arr = np.atleast_2d(cloud_arr)
+
+    cloud_msg = PointCloud2()
+
+    if stamp is not None:
+        cloud_msg.header.stamp = stamp
+    if frame_id is not None:
+        cloud_msg.header.frame_id = frame_id
+    cloud_msg.height = cloud_arr.shape[0]
+    cloud_msg.width = cloud_arr.shape[1]
+    cloud_msg.fields = arr_to_fields(cloud_arr)
+    cloud_msg.is_bigendian = False # assumption
+    cloud_msg.point_step = cloud_arr.dtype.itemsize
+    cloud_msg.row_step = cloud_msg.point_step*cloud_arr.shape[1]
+    cloud_msg.is_dense = all([np.isfinite(cloud_arr[fname]).all() for fname in cloud_arr.dtype.names])
+    cloud_msg.data = cloud_arr.tostring()
+    return cloud_msg
+
+
+def merge_rgb_fields(cloud_arr):
+    '''Takes an array with named np.uint8 fields 'r', 'g', and 'b', and returns an array in
+    which they have been merged into a single np.float32 'rgb' field. The first byte of this
+    field is the 'r' uint8, the second is the 'g', uint8, and the third is the 'b' uint8.
+    This is the way that pcl likes to handle RGB colors for some reason.
+    '''
+    r = np.asarray(cloud_arr['r'], dtype=np.uint32)
+    g = np.asarray(cloud_arr['g'], dtype=np.uint32)
+    b = np.asarray(cloud_arr['b'], dtype=np.uint32)
+    rgb_arr = np.array((r << 16) | (g << 8) | (b << 0), dtype=np.uint32)
+
+    # not sure if there is a better way to do this. i'm changing the type of the array
+    # from uint32 to float32, but i don't want any conversion to take place -jdb
+    rgb_arr.dtype = np.float32
+
+    # create a new array, without r, g, and b, but with rgb float32 field
+    new_dtype = []
+    for field_name in cloud_arr.dtype.names:
+        field_type, field_offset = cloud_arr.dtype.fields[field_name]
+        if field_name not in ('r', 'g', 'b'):
+            new_dtype.append((field_name, field_type))
+    new_dtype.append(('rgb', np.float32))
+    new_cloud_arr = np.zeros(cloud_arr.shape, new_dtype)
+
+    # fill in the new array
+    for field_name in new_cloud_arr.dtype.names:
+        if field_name == 'rgb':
+            new_cloud_arr[field_name] = rgb_arr
+        else:
+            new_cloud_arr[field_name] = cloud_arr[field_name]
+
+    return new_cloud_arr
+
+
+def arr_to_fields(cloud_arr):
+    '''Convert a numpy record datatype into a list of PointFields.
+    '''
+    fields = []
+    for field_name in cloud_arr.dtype.names:
+        np_field_type, field_offset = cloud_arr.dtype.fields[field_name]
+        pf = PointField()
+        pf.name = field_name
+        pf.datatype = nptype_to_pftype[np_field_type]
+        pf.offset = field_offset
+        pf.count = 1 # is this ever more than one?
+        fields.append(pf)
+    return fields

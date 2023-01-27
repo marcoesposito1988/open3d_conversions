@@ -3,8 +3,8 @@
 
 import numpy as np
 import open3d
-import ros_numpy
-import sensor_msgs.point_cloud2 as pc2
+import ros2_numpy
+from sensor_msgs.msg import PointCloud2 as pc2
 from numpy.lib import recfunctions
 from sensor_msgs.msg import PointField
 from std_msgs.msg import Header
